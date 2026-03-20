@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NJT Train">
+<meta name="theme-color" content="#0a0e17">
+<title>NJT Maplewood</title>
+<link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIk5KVCBNYXBsZXdvb2QiLAogICJzaG9ydF9uYW1lIjogIk5KVCIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMGEwZTE3IiwKICAidGhlbWVfY29sb3IiOiAiIzBhMGUxNyIKfQ==">
+<!-- Inline SVG icon as apple-touch-icon -->
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjQwIiBmaWxsPSIjMDAzREE1Ii8+PHRleHQgeD0iOTAiIHk9IjEwNSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSI1NiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5OSlQ8L3RleHQ+PC9zdmc+">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  
+  :root {
+    --bg: #0a0e17;
+    --surface: #131926;
+    --accent: #3b82f6;
+    --accent-bright: #60a5fa;
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --orange: #f59e0b;
+    --orange-dim: rgba(245,158,11,0.10);
+    --cyan: #06b6d4;
+    --cyan-dim: rgba(6,182,212,0.10);
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-muted: #475569;
+    --border: #1e293b;
+    --njt-blue: #003DA5;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(180deg, var(--bg) 0%, #0d1220 100%);
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-width: 430px;
+    margin: 0 auto;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .status-bar { height: env(safe-area-inset-top, 48px); }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .njt-badge {
+    background: var(--njt-blue); color: #fff; font-weight: 700;
+    font-size: 13px; letter-spacing: 0.05em; padding: 6px 10px;
+    border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+  }
+  .header-text { flex: 1; }
+  .line-name { font-size: 17px; font-weight: 600; }
+  .schedule-type { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .clock {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px; font-weight: 500; color: var(--text-dim);
+  }
+
+  /* Direction toggle */
+  .direction-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    width: calc(100% - 40px); margin: 18px auto 0; padding: 16px 22px;
+    background: linear-gradient(135deg, rgba(0,61,165,0.87), rgba(0,61,165,0.6));
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+    cursor: pointer; color: #fff;
+    box-shadow: 0 4px 20px rgba(0,61,165,0.25);
+    font-family: 'DM Sans', sans-serif;
+    transition: transform 0.1s ease;
+  }
+  .direction-toggle:active { transform: scale(0.98); }
+  .direction-from, .direction-to { font-size: 17px; font-weight: 600; flex: 1; }
+  .direction-from { text-align: left; }
+  .direction-to { text-align: right; }
+  .arrow-container {
+    display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 6px;
+  }
+  .tap-hint {
+    font-size: 8px; opacity: 0.45; text-transform: uppercase;
+    letter-spacing: 0.12em; font-weight: 500;
+  }
+
+  /* Filter row */
+  .filter-row {
+    display: flex; gap: 8px; padding: 12px 20px 4px; justify-content: center;
+  }
+  .filter-btn {
+    background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 14px; color: var(--text-dim); font-size: 12px; font-weight: 500;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease;
+  }
+  .filter-btn.active {
+    background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.3);
+    color: var(--accent-bright);
+  }
+
+  /* Train list */
+  .train-list {
+    padding: 8px 20px; display: flex; flex-direction: column; gap: 10px;
+  }
+
+  /* Train card */
+  .train-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+    animation: slideUp 0.35s ease both;
+  }
+  .train-card.next {
+    border-color: rgba(34,197,94,0.25);
+    background: linear-gradient(135deg, var(--surface), rgba(34,197,94,0.04));
+    box-shadow: 0 2px 16px rgba(34,197,94,0.08);
+  }
+
+  .card-left {
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 66px; gap: 5px;
+  }
+  .countdown {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 19px; font-weight: 600; color: var(--accent-bright);
+  }
+  .countdown.next {
+    font-size: 22px; color: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .badge {
+    font-size: 9px; font-weight: 600; padding: 2px 7px;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .badge.direct { background: var(--green-dim); color: var(--green); }
+  .badge.transfer { background: var(--orange-dim); color: var(--orange); }
+
+  .card-middle { flex: 1; min-width: 0; }
+  .time-row { display: flex; align-items: center; gap: 7px; }
+  .depart-time { font-size: 15px; font-weight: 600; }
+  .time-dash { font-size: 12px; color: var(--text-muted); }
+  .arrive-time { font-size: 15px; font-weight: 500; color: var(--text-dim); }
+  .train-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .train-number {
+    font-size: 11px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .line-badge {
+    font-size: 10px; color: var(--cyan); background: var(--cyan-dim);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+  .transfer-note { font-size: 10px; color: var(--text-muted); margin-top: 3px; font-style: italic; }
+
+  .card-right { display: flex; flex-direction: column; align-items: flex-end; }
+  .duration {
+    font-size: 13px; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace; font-weight: 500;
+  }
+
+  /* Show more */
+  .show-more-btn {
+    background: transparent; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; color: var(--accent-bright); font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; width: 100%;
+    transition: all 0.15s ease;
+  }
+  .show-more-btn:active { background: rgba(59,130,246,0.08); }
+
+  /* No trains */
+  .no-trains { text-align: center; padding: 48px 20px; }
+  .no-trains-icon { font-size: 40px; margin-bottom: 12px; }
+  .no-trains-text { font-size: 18px; font-weight: 600; color: var(--text-dim); }
+  .no-trains-sub { font-size: 14px; color: var(--text-muted); margin-top: 8px; }
+
+  /* Footer */
+  .footer { padding: 28px 20px calc(32px + env(safe-area-inset-bottom, 0px)); text-align: center; }
+  .footer-note { font-size: 12px; color: var(--orange); font-weight: 500; margin-bottom: 4px; }
+  .footer-sub { font-size: 11px; color: var(--text-muted); }
+  .footer-version { font-size: 10px; color: var(--text-muted); margin-top: 10px; opacity: 0.5; }
+  /* Real-time status */
+  .rt-status {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 20px 0; justify-content: center;
+  }
+  .rt-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    display: inline-block;
+  }
+  .rt-dot.live { background: var(--green); animation: pulse 2s ease-in-out infinite; }
+  .rt-dot.offline { background: var(--text-muted); }
+  .rt-label { font-size: 11px; color: var(--text-muted); }
+  
+  .delay-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px;
+    border-radius: 4px; margin-top: 3px; display: inline-block;
+  }
+  .delay-badge.late { background: rgba(239,68,68,0.12); color: #ef4444; }
+  .delay-badge.on-time { background: var(--green-dim); color: var(--green); }
+  .delay-badge.cancelled { background: rgba(239,68,68,0.15); color: #ef4444; text-decoration: line-through; }
+</style>
+</head>
+<body>
+
+<div class="status-bar"></div>
+
+<div class="header">
+  <div class="njt-badge">NJT</div>
+  <div class="header-text">
+    <div class="line-name">Morris & Essex</div>
+    <div class="schedule-type">Weekday • Maplewood</div>
+  </div>
+  <div class="clock" id="clock"></div>
+</div>
+
+<button class="direction-toggle" id="dirToggle" onclick="toggleDirection()">
+  <div class="direction-from" id="fromStation">Maplewood</div>
+  <div class="arrow-container">
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <path d="M8 16H24M24 16L18 10M24 16L18 22" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="tap-hint">tap to flip</div>
+  </div>
+  <div class="direction-to" id="toStation">NY Penn</div>
+</button>
+
+<div class="filter-row">
+  <button class="filter-btn active" id="filterAll" onclick="setFilter(false)">All trains</button>
+  <button class="filter-btn" id="filterDirect" onclick="setFilter(true)">Direct only</button>
+</div>
+
+<div class="rt-status" id="rtStatus">
+  <span class="rt-dot offline" id="rtDot"></span>
+  <span class="rt-label" id="rtLabel">Static schedule</span>
+</div>
+
+<div class="train-list" id="trainList"></div>
+
+<div class="footer">
+  <div class="footer-note">⚠️ Static schedule — does not reflect delays</div>
+  <div class="footer-sub">Check njtransit.com or the NJT app for real-time status</div>
+  <div class="footer-version">v2.0 • Maplewood Edition</div>
+</div>
+
+<script>
+// ─── SCHEDULE DATA ───────────────────────────────────────────────
+const SCHEDULE = {
+  toPenn: [
+    { depart:"4:56", arrive:"5:36", train:"6602", line:"M&E", duration:40 },
+    { depart:"5:14", arrive:"6:04", train:"0600", line:"M&E", duration:50, transfer:"via MC-Boonton #6202" },
+    { depart:"5:49", arrive:"6:29", train:"6604", line:"M&E", duration:40 },
+    { depart:"5:58", arrive:"6:44", train:"0402", line:"Gladstone", duration:46, transfer:"via MC-Boonton #6204" },
+    { depart:"6:20", arrive:"6:59", train:"6606", line:"M&E", duration:39 },
+    { depart:"6:26", arrive:"7:42", train:"0608", line:"M&E", duration:76, transfer:"local" },
+    { depart:"6:42", arrive:"7:21", train:"6610", line:"M&E", duration:39 },
+    { depart:"6:57", arrive:"7:28", train:"6406", line:"Gladstone", duration:31 },
+    { depart:"7:06", arrive:"8:29", train:"0308", line:"M&E", duration:83, transfer:"local" },
+    { depart:"7:18", arrive:"8:03", train:"0852", line:"M&E", duration:45 },
+    { depart:"7:27", arrive:"8:01", train:"6314", line:"M&E", duration:34 },
+    { depart:"8:00", arrive:"8:41", train:"6318", line:"M&E", duration:41 },
+    { depart:"8:14", arrive:"8:59", train:"0414", line:"Gladstone", duration:45, transfer:"via MC-Boonton #6214" },
+    { depart:"8:33", arrive:"9:12", train:"6320", line:"M&E", duration:39 },
+    { depart:"8:41", arrive:"9:31", train:"0808", line:"M&E", duration:50, transfer:"local" },
+    { depart:"9:03", arrive:"9:42", train:"6324", line:"M&E", duration:39 },
+    { depart:"9:36", arrive:"10:25", train:"0480", line:"Gladstone", duration:49, transfer:"via M&E #6628" },
+    { depart:"10:02", arrive:"10:40", train:"6328", line:"M&E", duration:38 },
+    { depart:"10:38", arrive:"11:19", train:"6332", line:"M&E", duration:41 },
+    { depart:"11:00", arrive:"11:50", train:"0418", line:"Gladstone", duration:50, transfer:"via MC-Boonton #6226" },
+    { depart:"11:40", arrive:"12:21", train:"6636", line:"M&E", duration:41 },
+    { depart:"11:53", arrive:"12:44", train:"0420", line:"Gladstone", duration:51, transfer:"via MC-Boonton #6230" },
+    { depart:"12:47", arrive:"13:27", train:"6640", line:"M&E", duration:40 },
+    { depart:"12:54", arrive:"13:42", train:"0422", line:"Gladstone", duration:48, transfer:"via MC-Boonton #6234" },
+    { depart:"13:47", arrive:"14:27", train:"6644", line:"M&E", duration:40 },
+    { depart:"13:54", arrive:"14:47", train:"0424", line:"Gladstone", duration:53, transfer:"via MC-Boonton #6238" },
+    { depart:"14:47", arrive:"15:24", train:"6648", line:"M&E", duration:37 },
+    { depart:"14:54", arrive:"15:48", train:"0426", line:"Gladstone", duration:54, transfer:"via MC-Boonton #6242" },
+    { depart:"15:30", arrive:"16:11", train:"6650", line:"M&E", duration:41 },
+    { depart:"15:54", arrive:"17:06", train:"0428", line:"Gladstone", duration:72, transfer:"via M&E #6656" },
+    { depart:"16:06", arrive:"16:52", train:"6654", line:"M&E", duration:46 },
+    { depart:"16:51", arrive:"17:31", train:"6658", line:"M&E", duration:40 },
+    { depart:"17:07", arrive:"18:00", train:"0660", line:"M&E", duration:53, transfer:"via MC-Boonton #6252" },
+    { depart:"17:37", arrive:"18:18", train:"6662", line:"M&E", duration:41 },
+    { depart:"17:48", arrive:"19:03", train:"0432", line:"Gladstone", duration:75, transfer:"via MC-Boonton #6258" },
+    { depart:"18:03", arrive:"18:49", train:"6664", line:"M&E", duration:46 },
+    { depart:"18:37", arrive:"19:14", train:"6666", line:"M&E", duration:37 },
+    { depart:"18:54", arrive:"19:39", train:"6368", line:"M&E", duration:45 },
+    { depart:"19:16", arrive:"19:56", train:"6668", line:"M&E", duration:40 },
+    { depart:"19:42", arrive:"21:00", train:"0336", line:"M&E", duration:78, transfer:"via MC-Boonton #6270" },
+    { depart:"19:49", arrive:"20:29", train:"6670", line:"M&E", duration:40 },
+    { depart:"20:45", arrive:"21:23", train:"6672", line:"M&E", duration:38 },
+    { depart:"21:11", arrive:"22:05", train:"0674", line:"M&E", duration:54, transfer:"via MC-Boonton #6274" },
+    { depart:"21:27", arrive:"22:07", train:"6674", line:"M&E", duration:40 },
+    { depart:"22:19", arrive:"23:00", train:"6676", line:"M&E", duration:41 },
+    { depart:"22:27", arrive:"23:16", train:"0438", line:"Gladstone", duration:49, transfer:"via MC-Boonton #6278" },
+    { depart:"23:16", arrive:"0:05", train:"0682", line:"M&E", duration:49, transfer:"via MC-Boonton #6280" },
+  ],
+  toMaplewood: [
+    { depart:"5:53", arrive:"6:56", train:"6209", line:"MC-Boonton", duration:63, transfer:"via M&E #0607" },
+    { depart:"5:58", arrive:"6:34", train:"6305", line:"M&E", duration:36 },
+    { depart:"6:42", arrive:"7:18", train:"6307", line:"M&E", duration:36 },
+    { depart:"6:50", arrive:"7:35", train:"6213", line:"MC-Boonton", duration:45, transfer:"via Gladstone #0481" },
+    { depart:"7:07", arrive:"7:43", train:"6607", line:"M&E", duration:36 },
+    { depart:"7:29", arrive:"8:10", train:"6215", line:"MC-Boonton", duration:41, transfer:"via M&E #0309" },
+    { depart:"7:40", arrive:"8:21", train:"6611", line:"M&E", duration:41 },
+    { depart:"8:02", arrive:"8:42", train:"6613", line:"M&E", duration:40 },
+    { depart:"8:14", arrive:"9:28", train:"6219", line:"MC-Boonton", duration:74, transfer:"via Gladstone #0411" },
+    { depart:"8:28", arrive:"9:01", train:"6315", line:"M&E", duration:33 },
+    { depart:"8:38", arrive:"9:14", train:"6617", line:"M&E", duration:36 },
+    { depart:"9:09", arrive:"9:51", train:"6227", line:"MC-Boonton", duration:42, transfer:"via M&E #0851" },
+    { depart:"9:22", arrive:"9:56", train:"6317", line:"M&E", duration:34 },
+    { depart:"10:04", arrive:"10:40", train:"6619", line:"M&E", duration:36 },
+    { depart:"10:29", arrive:"11:12", train:"6233", line:"MC-Boonton", duration:43, transfer:"via Gladstone #0415" },
+    { depart:"10:46", arrive:"11:22", train:"6621", line:"M&E", duration:36 },
+    { depart:"11:29", arrive:"12:12", train:"6237", line:"MC-Boonton", duration:43, transfer:"via Gladstone #0417" },
+    { depart:"11:46", arrive:"12:22", train:"6625", line:"M&E", duration:36 },
+    { depart:"12:29", arrive:"13:12", train:"6241", line:"MC-Boonton", duration:43, transfer:"via Gladstone #0419" },
+    { depart:"12:47", arrive:"13:23", train:"6627", line:"M&E", duration:36 },
+    { depart:"13:29", arrive:"14:13", train:"6245", line:"MC-Boonton", duration:44, transfer:"via Gladstone #0421" },
+    { depart:"13:51", arrive:"14:28", train:"6631", line:"M&E", duration:37 },
+    { depart:"14:30", arrive:"15:10", train:"6635", line:"M&E", duration:40 },
+    { depart:"14:51", arrive:"16:06", train:"6251", line:"MC-Boonton", duration:75, transfer:"via M&E #0325" },
+    { depart:"15:22", arrive:"15:56", train:"6339", line:"M&E", duration:34 },
+    { depart:"15:47", arrive:"16:25", train:"6253", line:"MC-Boonton", duration:38, transfer:"via M&E #0853" },
+    { depart:"16:07", arrive:"16:45", train:"6341", line:"M&E", duration:38 },
+    { depart:"16:43", arrive:"17:22", train:"6343", line:"M&E", duration:39 },
+    { depart:"16:52", arrive:"17:39", train:"6263", line:"MC-Boonton", duration:47, transfer:"via M&E #0645" },
+    { depart:"17:13", arrive:"17:44", train:"6647", line:"M&E", duration:31 },
+    { depart:"17:36", arrive:"18:15", train:"6351", line:"M&E", duration:39 },
+    { depart:"17:43", arrive:"18:11", train:"6651", line:"M&E", duration:28 },
+    { depart:"18:06", arrive:"18:38", train:"6437", line:"Gladstone", duration:32 },
+    { depart:"18:14", arrive:"19:16", train:"6279", line:"MC-Boonton", duration:62, transfer:"via M&E #0657" },
+    { depart:"18:19", arrive:"18:54", train:"6355", line:"M&E", duration:35 },
+    { depart:"18:41", arrive:"20:12", train:"6283", line:"MC-Boonton", duration:91, transfer:"via M&E #0665" },
+    { depart:"18:50", arrive:"19:28", train:"6359", line:"M&E", duration:38 },
+    { depart:"19:13", arrive:"19:54", train:"6363", line:"M&E", duration:41 },
+    { depart:"20:05", arrive:"20:41", train:"6667", line:"M&E", duration:36 },
+    { depart:"20:35", arrive:"21:20", train:"6293", line:"MC-Boonton", duration:45, transfer:"via Gladstone #0447" },
+    { depart:"20:51", arrive:"21:28", train:"6671", line:"M&E", duration:37 },
+    { depart:"21:32", arrive:"22:20", train:"6295", line:"MC-Boonton", duration:48, transfer:"via Gladstone #0449" },
+    { depart:"21:51", arrive:"22:28", train:"6675", line:"M&E", duration:37 },
+    { depart:"22:13", arrive:"22:53", train:"6677", line:"M&E", duration:40 },
+    { depart:"22:41", arrive:"23:25", train:"6297", line:"MC-Boonton", duration:44, transfer:"via Gladstone #0451" },
+    { depart:"22:56", arrive:"23:33", train:"6679", line:"M&E", duration:37 },
+    { depart:"23:41", arrive:"0:32", train:"6299", line:"MC-Boonton", duration:51, transfer:"via Gladstone #0453" },
+    { depart:"0:02", arrive:"0:39", train:"6601", line:"M&E", duration:37 },
+    { depart:"0:56", arrive:"1:35", train:"6603", line:"M&E", duration:39 },
+  ],
+};
+
+// ─── STATE ───────────────────────────────────────────────────────
+let direction = new Date().getHours() < 12 ? "toPenn" : "toMaplewood";
+let directOnly = false;
+let showAll = false;
+let realtimeData = null;
+let realtimeTimestamp = 0;
+
+// ─── REAL-TIME FETCHING ──────────────────────────────────────────
+async function fetchRealtime() {
+  try {
+    const res = await fetch("/.netlify/functions/njt-realtime");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    realtimeData = data;
+    realtimeTimestamp = Date.now();
+    
+    // Update status indicator
+    document.getElementById("rtDot").className = "rt-dot live";
+    document.getElementById("rtLabel").textContent = 
+      "Live data • " + data.debug.totalEntities + " trains tracked";
+    
+    render();
+  } catch (err) {
+    console.log("Realtime fetch failed (using static):", err.message);
+    document.getElementById("rtDot").className = "rt-dot offline";
+    document.getElementById("rtLabel").textContent = "Static schedule";
+  }
+}
+
+function getDelayForTrain(train) {
+  if (!realtimeData || !realtimeData.trips) return null;
+  // Realtime data is fresh for 2 minutes
+  if (Date.now() - realtimeTimestamp > 120000) return null;
+  
+  // Try matching by train number
+  const match = realtimeData.trips.find(rt => {
+    const tid = rt.tripId || "";
+    return tid.includes(train.train);
+  });
+  
+  if (!match) return null;
+  
+  return {
+    delayMinutes: Math.round((match.departureDelay || match.arrivalDelay || 0) / 60),
+    cancelled: match.cancelled || false,
+  };
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────
+function parseTime(str) {
+  const [h, m] = str.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatTime12(str) {
+  let [h, m] = str.split(":").map(Number);
+  const ampm = (h >= 12 && h < 24) ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return h + ":" + String(m).padStart(2, "0") + " " + ampm;
+}
+
+function minutesUntil(departStr, nowMins) {
+  let dep = parseTime(departStr);
+  if (dep < 240 && nowMins > 1200) dep += 1440;
+  if (dep < nowMins && nowMins < 240) return dep + 1440 - nowMins;
+  return dep - nowMins;
+}
+
+function formatCountdown(mins) {
+  if (mins <= 0) return "NOW";
+  if (mins < 60) return mins + "m";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? h + "h " + m + "m" : h + "h";
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────
+function render() {
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+
+  // Clock
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+  // Direction labels
+  const from = direction === "toPenn" ? "Maplewood" : "NY Penn";
+  const to = direction === "toPenn" ? "NY Penn" : "Maplewood";
+  document.getElementById("fromStation").textContent = from;
+  document.getElementById("toStation").textContent = to;
+
+  // Filter buttons
+  document.getElementById("filterAll").className = "filter-btn" + (directOnly ? "" : " active");
+  document.getElementById("filterDirect").className = "filter-btn" + (directOnly ? " active" : "");
+
+  // Get trains
+  let trains = SCHEDULE[direction];
+  if (directOnly) trains = trains.filter(t => !t.transfer);
+
+  const upcoming = trains
+    .map(t => ({ ...t, minsAway: minutesUntil(t.depart, nowMins) }))
+    .filter(t => t.minsAway >= -1 && t.minsAway < 1440)
+    .sort((a, b) => a.minsAway - b.minsAway);
+
+  const display = showAll ? upcoming : upcoming.slice(0, 3);
+  const list = document.getElementById("trainList");
+
+  if (display.length === 0) {
+    const firstTrain = SCHEDULE[direction][0];
+    list.innerHTML = `
+      <div class="no-trains">
+        <div class="no-trains-icon">🌙</div>
+        <div class="no-trains-text">${directOnly ? "No direct trains remaining" : "No more trains today"}</div>
+        <div class="no-trains-sub">First train: ${formatTime12(firstTrain.depart)}</div>
+      </div>`;
+    return;
+  }
+
+  let html = "";
+  display.forEach((train, i) => {
+    const isNext = i === 0 && !showAll;
+    const isDirect = !train.transfer;
+    const rt = getDelayForTrain(train);
+    
+    let delayHtml = "";
+    if (rt) {
+      if (rt.cancelled) {
+        delayHtml = `<div class="delay-badge cancelled">Cancelled</div>`;
+      } else if (rt.delayMinutes > 2) {
+        delayHtml = `<div class="delay-badge late">${rt.delayMinutes}m late</div>`;
+      } else if (rt.delayMinutes >= 0) {
+        delayHtml = `<div class="delay-badge on-time">On time</div>`;
+      }
+    }
+    
+    html += `
+      <div class="train-card${isNext ? ' next' : ''}${rt && rt.cancelled ? ' cancelled' : ''}" style="animation-delay:${i * 0.05}s">
+        <div class="card-left">
+          <div class="countdown${isNext ? ' next' : ''}">${formatCountdown(train.minsAway)}</div>
+          <div class="badge ${isDirect ? 'direct' : 'transfer'}">${isDirect ? 'Direct' : 'Transfer'}</div>
+        </div>
+        <div class="card-middle">
+          <div class="time-row">
+            <span class="depart-time">${formatTime12(train.depart)}</span>
+            <span class="time-dash">→</span>
+            <span class="arrive-time">${formatTime12(train.arrive)}</span>
+          </div>
+          <div class="train-meta">
+            <span class="train-number">#${train.train}</span>
+            <span class="line-badge">${train.line}</span>
+          </div>
+          ${train.transfer ? `<div class="transfer-note">${train.transfer}</div>` : ''}
+          ${delayHtml}
+        </div>
+        <div class="card-right">
+          <div class="duration">${train.duration}m</div>
+        </div>
+      </div>`;
+  });
+
+  if (upcoming.length > 3) {
+    html += `
+      <button class="show-more-btn" onclick="toggleShowAll()">
+        ${showAll ? 'Show next 3 only' : 'Show all ' + upcoming.length + ' remaining'}
+      </button>`;
+  }
+
+  list.innerHTML = html;
+}
+
+// ─── INTERACTIONS ────────────────────────────────────────────────
+function toggleDirection() {
+  direction = direction === "toPenn" ? "toMaplewood" : "toPenn";
+  showAll = false;
+  render();
+}
+
+function setFilter(direct) {
+  directOnly = direct;
+  showAll = false;
+  render();
+}
+
+function toggleShowAll() {
+  showAll = !showAll;
+  render();
+}
+
+// ─── GPS LOCATION ────────────────────────────────────────────────
+const MAPLEWOOD = { lat: 40.7331, lng: -74.2746 };
+const PENN_NYC  = { lat: 40.7505, lng: -73.9934 };
+
+function distanceMiles(lat1, lng1, lat2, lng2) {
+  const R = 3959; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+    Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function setDirectionFromLocation(pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  const toMaple = distanceMiles(lat, lng, MAPLEWOOD.lat, MAPLEWOOD.lng);
+  const toPenn  = distanceMiles(lat, lng, PENN_NYC.lat, PENN_NYC.lng);
+  // If closer to Maplewood, you want to go to Penn (and vice versa)
+  direction = toMaple < toPenn ? "toPenn" : "toMaplewood";
+  render();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+// Try GPS first, fall back to time-of-day
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    setDirectionFromLocation,
+    () => render(),
+    { timeout: 5000, maximumAge: 300000 }
+  );
+}
+render();
+setInterval(render, 15000);
+
+// Start real-time polling (every 30 seconds)
+fetchRealtime();
+setInterval(fetchRealtime, 30000);
+</script>
+
+</body>
+</html>

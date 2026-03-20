@@ -1,0 +1,8 @@
+{
+  "name": "njt-maplewood",
+  "version": "2.0.0",
+  "private": true,
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.1.1"
+  }
+}
