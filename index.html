@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -251,9 +252,9 @@
 <div class="train-list" id="trainList"></div>
 
 <div class="footer">
-  <div class="footer-note">⚠️ Static schedule — does not reflect delays</div>
-  <div class="footer-sub">Check njtransit.com or the NJT app for real-time status</div>
-  <div class="footer-version">v2.0 • Maplewood Edition</div>
+  <div class="footer-note" id="footerNote">⚠️ Static schedule — does not reflect delays</div>
+  <div class="footer-sub" id="footerSub">Check njtransit.com or the NJT app for real-time status</div>
+  <div class="footer-version">v2.1 • Maplewood Edition</div>
 </div>
 
 <script>
@@ -382,6 +383,9 @@ async function fetchRealtime() {
     document.getElementById("rtDot").className = "rt-dot live";
     document.getElementById("rtLabel").textContent = 
       "Live data • " + data.debug.totalEntities + " trains tracked";
+    document.getElementById("footerNote").textContent = "🟢 Live delay data active";
+    document.getElementById("footerNote").style.color = "var(--green)";
+    document.getElementById("footerSub").textContent = "Updated every 30 seconds from NJ Transit";
     
     render();
   } catch (err) {
@@ -396,17 +400,37 @@ function getDelayForTrain(train) {
   // Realtime data is fresh for 2 minutes
   if (Date.now() - realtimeTimestamp > 120000) return null;
   
-  // Try matching by train number
-  const match = realtimeData.trips.find(rt => {
-    const tid = rt.tripId || "";
-    return tid.includes(train.train);
-  });
+  // Convert our schedule time to today's Unix timestamp for comparison
+  const [h, m] = train.depart.split(":").map(Number);
+  const now = new Date();
+  const schedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+  // Handle after-midnight trains
+  if (h < 4 && now.getHours() > 20) schedDate.setDate(schedDate.getDate() + 1);
+  const schedUnix = Math.floor(schedDate.getTime() / 1000);
   
-  if (!match) return null;
+  // Find the real-time trip whose scheduled departure is closest to ours
+  // (departureTime minus departureDelay = original scheduled time)
+  let bestMatch = null;
+  let bestDiff = Infinity;
+  
+  for (const rt of realtimeData.trips) {
+    if (!rt.departureTime) continue;
+    // The RT departureTime is the *predicted* time (schedule + delay)
+    // So scheduled time = departureTime - departureDelay
+    const rtScheduled = rt.departureTime - (rt.departureDelay || 0);
+    const diff = Math.abs(rtScheduled - schedUnix);
+    // Match within 5 minutes of scheduled time
+    if (diff < 300 && diff < bestDiff) {
+      bestDiff = diff;
+      bestMatch = rt;
+    }
+  }
+  
+  if (!bestMatch) return null;
   
   return {
-    delayMinutes: Math.round((match.departureDelay || match.arrivalDelay || 0) / 60),
-    cancelled: match.cancelled || false,
+    delayMinutes: Math.round((bestMatch.departureDelay || bestMatch.arrivalDelay || 0) / 60),
+    cancelled: bestMatch.cancelled || false,
   };
 }
 
