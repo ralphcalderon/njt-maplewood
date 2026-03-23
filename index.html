@@ -81,24 +81,12 @@
   .arrow-container { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0 6px; }
   .tap-hint { font-size: 8px; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 500; }
 
-  /* Walk/Run indicator */
-  .walk-indicator { width: calc(100% - 40px); margin: 10px auto 0; padding: 10px 16px; border-radius: 10px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; transition: all 0.3s ease; }
-  .walk-indicator.walk { background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); color: var(--green); }
-  .walk-indicator.hustle { background: var(--orange-dim); border: 1px solid rgba(245,158,11,0.2); color: var(--orange); }
-  .walk-indicator.drive { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.2); color: var(--red); }
-  .walk-indicator.none { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); }
-  .walk-icon { font-size: 18px; flex-shrink: 0; }
-  .walk-text { flex: 1; }
-  .walk-time { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 14px; }
-
-  /* Filter row */
-  .filter-row { display: flex; gap: 8px; padding: 12px 20px 4px; justify-content: center; }
-  .filter-btn { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; color: var(--text-dim); font-size: 12px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease; }
+  /* Filter row (combined) */
+  .filter-row { display: flex; gap: 6px; padding: 14px 20px 4px; justify-content: center; align-items: center; }
+  .filter-btn { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; color: var(--text-dim); font-size: 12px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease; }
   .filter-btn.active { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.3); color: var(--accent-bright); }
-
-  /* Schedule type toggle */
-  .schedule-toggle { display: flex; gap: 6px; padding: 0 20px; justify-content: center; margin-top: 8px; }
-  .schedule-btn { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; color: var(--text-muted); font-size: 11px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease; }
+  .filter-divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+  .schedule-btn { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text-muted); font-size: 11px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease; }
   .schedule-btn.active { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.3); color: var(--cyan); }
 
   /* Train list */
@@ -196,20 +184,13 @@
   <div class="direction-to" id="toStation">NY Penn</div>
 </button>
 
-<div class="walk-indicator none" id="walkIndicator">
-  <span class="walk-icon">🌙</span>
-  <span class="walk-text">No upcoming trains</span>
-</div>
-
 <div class="filter-row">
-  <button class="filter-btn active" id="filterAll" onclick="setFilter(false)">All trains</button>
-  <button class="filter-btn" id="filterDirect" onclick="setFilter(true)">Direct only</button>
-</div>
-
-<div class="schedule-toggle">
-  <button class="schedule-btn active" id="schedWeekday" onclick="setScheduleType('weekday')">Weekday</button>
-  <button class="schedule-btn" id="schedWeekend" onclick="setScheduleType('weekend')">Weekend</button>
-  <button class="schedule-btn" id="schedHoliday" onclick="setScheduleType('holiday')">Holiday</button>
+  <button class="filter-btn active" id="filterAll" onclick="setFilter(false)">All</button>
+  <button class="filter-btn" id="filterDirect" onclick="setFilter(true)">Direct</button>
+  <span class="filter-divider"></span>
+  <button class="schedule-btn active" id="schedWeekday" onclick="setScheduleType('weekday')">Wkdy</button>
+  <button class="schedule-btn" id="schedWeekend" onclick="setScheduleType('weekend')">Wknd</button>
+  <button class="schedule-btn" id="schedHoliday" onclick="setScheduleType('holiday')">Hol</button>
 </div>
 
 <div class="rt-status" id="rtStatus">
@@ -226,10 +207,6 @@
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════
-// WALK TIME CONFIG — adjust these for your walk to the station
-const WALK_MINUTES = 12;
-const HUSTLE_MINUTES = 8;
 // ═══════════════════════════════════════════════════════════════════
 
 const SCHEDULES = {
@@ -568,34 +545,6 @@ function startPress(trainId) {
 function endPress() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }
 
 // ─── WALK INDICATOR ──────────────────────────────────────────────
-function updateWalkIndicator(nextTrain) {
-  var el = document.getElementById("walkIndicator");
-  if (!nextTrain || nextTrain.minsAway > 120) {
-    el.className = "walk-indicator none";
-    el.innerHTML = '<span class="walk-icon">\uD83C\uDF19</span><span class="walk-text">No trains soon</span>';
-    return;
-  }
-  if (direction !== "toPenn") {
-    el.className = "walk-indicator none";
-    el.innerHTML = '<span class="walk-icon">\uD83D\uDE82</span><span class="walk-text">Next train: <strong>' + formatCountdown(nextTrain.minsAway) + '</strong></span>';
-    return;
-  }
-  var minsLeft = nextTrain.minsAway;
-  if (minsLeft >= WALK_MINUTES + 3) {
-    el.className = "walk-indicator walk";
-    el.innerHTML = '<span class="walk-icon">\uD83D\uDEB6</span><span class="walk-text">Walk \u2014 you have <span class="walk-time">' + minsLeft + 'm</span></span>';
-  } else if (minsLeft >= HUSTLE_MINUTES) {
-    el.className = "walk-indicator hustle";
-    el.innerHTML = '<span class="walk-icon">\uD83C\uDFC3</span><span class="walk-text">Hustle \u2014 only <span class="walk-time">' + minsLeft + 'm</span> left</span>';
-  } else if (minsLeft > 0) {
-    el.className = "walk-indicator drive";
-    el.innerHTML = '<span class="walk-icon">\uD83D\uDE97</span><span class="walk-text">Drive or catch the next \u2014 <span class="walk-time">' + minsLeft + 'm</span></span>';
-  } else {
-    el.className = "walk-indicator drive";
-    el.innerHTML = '<span class="walk-icon">\uD83D\uDC4B</span><span class="walk-text">That one\'s gone \u2014 next train coming up</span>';
-  }
-}
-
 // ─── RENDER ──────────────────────────────────────────────────────
 function render() {
   var now = new Date();
@@ -625,8 +574,6 @@ function render() {
     .map(function(t) { return Object.assign({}, t, { minsAway: minutesUntil(t.depart, nowMins) }); })
     .filter(function(t) { return t.minsAway >= -1 && t.minsAway < 1440; })
     .sort(function(a, b) { return a.minsAway - b.minsAway; });
-
-  updateWalkIndicator(upcoming[0] || null);
 
   var display = showAll ? upcoming : upcoming.slice(0, 3);
   var list = document.getElementById("trainList");
