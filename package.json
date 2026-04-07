@@ -1,7 +1,7 @@
 {
-  "name": "njt-maplewood",
-  "version": "2.0.0",
-  "private": true,
+  "name": "ok-commuter",
+  "version": "4.0.0",
+  "description": "OK Commuter — NJ Transit commute companion",
   "dependencies": {
     "gtfs-realtime-bindings": "^1.1.1"
   }
