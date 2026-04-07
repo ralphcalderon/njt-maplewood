@@ -1,12 +1,9 @@
-// ─── NJT Schedule Function ───────────────────────────────────────
-// Fetches schedule data from NJ Transit's API for any station pair.
-// Uses the getTrainScheduleJSON endpoint for real schedule lookups.
-// Falls back to GTFS static data cached in memory.
-// ─────────────────────────────────────────────────────────────────
+const GtfsRealtimeBindings = require("gtfs-realtime-bindings");
 
+// ─── CONFIG ──────────────────────────────────────────────────────
 const API_BASE = "https://raildata.njtransit.com/api/GTFSRT";
 
-// ─── TOKEN CACHE ─────────────────────────────────────────────────
+// ─── TOKEN CACHE (in-memory, per function instance) ──────────────
 let cachedToken = null;
 let tokenExpiry = 0;
 
@@ -42,36 +39,24 @@ async function getToken() {
   throw new Error("Authentication failed: " + JSON.stringify(data));
 }
 
-// ─── SCHEDULE DATA SOURCE ────────────────────────────────────────
-// NJ Transit's DepartureVision / TrainSchedule API
-// Base URL for the XML/JSON schedule endpoints
-const SCHEDULE_API = "https://datasource.njtransit.com/service/publicXMLFeed";
+async function fetchProtobuf(endpoint, token) {
+  const formData = new FormData();
+  formData.append("token", token);
 
-async function fetchScheduleFromAPI(origin, destination, scheduleType) {
-  // Use the NJT public feed — this returns departure vision data
-  // We need to use the developer API credentials
-  const username = process.env.NJT_API_USER || process.env.NJT_USERNAME;
-  const password = process.env.NJT_API_PASS || process.env.NJT_PASSWORD;
+  const res = await fetch(`${API_BASE}/${endpoint}`, {
+    method: "POST",
+    body: formData,
+  });
 
-  // Try the getTrainScheduleJSON endpoint  
-  const url = `https://datasource.njtransit.com/service/publicXMLFeed?command=getTrainScheduleJSON&NJT_Only=&station=${origin}`;
-  
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "Authorization": "Basic " + Buffer.from(`${username}:${password}`).toString("base64"),
-      },
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      return data;
-    }
-  } catch (e) {
-    console.log("Schedule API unavailable:", e.message);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${endpoint} failed (${res.status}): ${text}`);
   }
-  
-  return null;
+
+  const buffer = await res.arrayBuffer();
+  return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(
+    new Uint8Array(buffer)
+  );
 }
 
 // ─── HANDLER ─────────────────────────────────────────────────────
@@ -79,55 +64,117 @@ exports.handler = async (event) => {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Cache-Control": "public, max-age=300", // Cache 5 minutes
+    "Cache-Control": "public, max-age=30",
   };
 
   try {
+    // Accept stop IDs and route filter from query params
     const params = event.queryStringParameters || {};
-    const origin = params.origin;
-    const destination = params.destination;
-    
-    if (!origin || !destination) {
+    const stopIds = params.stops ? params.stops.split(",") : [];
+    const stopName = (params.stopName || "").toLowerCase();
+    const routeFilter = params.routes ? params.routes.split(",") : [];
+
+    if (stopIds.length === 0 && !stopName) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: "Missing 'origin' and/or 'destination' query parameters. Use station abbreviations (e.g., 'MP' for Maplewood, 'NY' for NY Penn).",
+          error: "Missing 'stops' or 'stopName' query parameter",
           timestamp: Date.now(),
         }),
       };
     }
 
-    // Try to get schedule from NJT API
-    const apiData = await fetchScheduleFromAPI(origin, destination);
-    
-    if (apiData) {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          source: "api",
-          origin,
-          destination,
-          data: apiData,
-          timestamp: Date.now(),
-        }),
-      };
+    const token = await getToken();
+
+    const [tripFeed, alertFeed] = await Promise.all([
+      fetchProtobuf("getTripUpdates", token),
+      fetchProtobuf("getAlerts", token).catch(() => null),
+    ]);
+
+    // Parse trip updates — extract stop time updates matching requested stop
+    const trips = [];
+
+    if (tripFeed && tripFeed.entity) {
+      for (const entity of tripFeed.entity) {
+        const tu = entity.tripUpdate;
+        if (!tu || !tu.stopTimeUpdate) continue;
+
+        const tripId = tu.trip?.tripId || "";
+        const routeId = tu.trip?.routeId || "";
+        const startDate = tu.trip?.startDate || "";
+        const scheduleRelationship = tu.trip?.scheduleRelationship || 0;
+
+        for (const stu of tu.stopTimeUpdate) {
+          const sid = String(stu.stopId);
+          const sidLower = sid.toLowerCase();
+
+          // Match by stop ID or by stop name substring
+          const matchById = stopIds.some(id => sid === id || sid === id.toString());
+          const matchByName = stopName && sidLower.includes(stopName);
+
+          if (matchById || matchByName) {
+            const arrival = stu.arrival;
+            const departure = stu.departure;
+
+            trips.push({
+              tripId,
+              routeId,
+              startDate,
+              stopId: sid,
+              cancelled: scheduleRelationship === 3,
+              arrivalDelay: arrival?.delay || 0,
+              arrivalTime: arrival?.time ? Number(arrival.time) : null,
+              departureDelay: departure?.delay || 0,
+              departureTime: departure?.time ? Number(departure.time) : null,
+              scheduleRelationship: stu.scheduleRelationship || 0,
+            });
+          }
+        }
+      }
     }
 
-    // If API fails, return a message indicating to use embedded schedules
+    // Parse alerts — filter by route if specified
+    const alerts = [];
+    if (alertFeed && alertFeed.entity) {
+      for (const entity of alertFeed.entity) {
+        const alert = entity.alert;
+        if (!alert) continue;
+
+        let affectsUs = true;
+        if (routeFilter.length > 0) {
+          affectsUs = alert.informedEntity?.some((ie) => {
+            const rid = (ie.routeId || "").toLowerCase();
+            return routeFilter.some(rf => rid.includes(rf.toLowerCase()));
+          });
+        }
+
+        if (affectsUs) {
+          alerts.push({
+            headerText: alert.headerText?.translation?.[0]?.text || "",
+            descriptionText: alert.descriptionText?.translation?.[0]?.text || "",
+            cause: alert.cause || 0,
+            effect: alert.effect || 0,
+          });
+        }
+      }
+    }
+
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        source: "unavailable",
-        origin,
-        destination,
-        message: "Schedule API unavailable. App will use embedded schedule data.",
         timestamp: Date.now(),
+        trips,
+        alerts,
+        debug: {
+          totalEntities: tripFeed?.entity?.length || 0,
+          matchedEntities: trips.length,
+          requestedStops: stopIds,
+          requestedStopName: stopName,
+        },
       }),
     };
-
   } catch (err) {
     return {
       statusCode: 500,
