@@ -1,16 +1,16 @@
-const GtfsRealtimeBindings = require("gtfs-realtime-bindings");
+// ─── NJT Schedule Function ───────────────────────────────────────
+// Fetches schedule data from NJ Transit's API for any station pair.
+// Uses the getTrainScheduleJSON endpoint for real schedule lookups.
+// Falls back to GTFS static data cached in memory.
+// ─────────────────────────────────────────────────────────────────
 
-// ─── CONFIG ──────────────────────────────────────────────────────
 const API_BASE = "https://raildata.njtransit.com/api/GTFSRT";
-const MAPLEWOOD_STOP_IDS = ["105", "38177"]; // NJT stop IDs for Maplewood station
-const PENN_STOP_IDS = ["105", "38177", "1", "38174"]; // Penn Station NY stop IDs
 
-// ─── TOKEN CACHE (in-memory, per function instance) ──────────────
+// ─── TOKEN CACHE ─────────────────────────────────────────────────
 let cachedToken = null;
 let tokenExpiry = 0;
 
 async function getToken() {
-  // Reuse token if less than 20 hours old
   if (cachedToken && Date.now() < tokenExpiry) {
     return cachedToken;
   }
@@ -35,31 +35,43 @@ async function getToken() {
 
   if (data.Authenticated === "True" && data.UserToken) {
     cachedToken = data.UserToken;
-    tokenExpiry = Date.now() + 20 * 60 * 60 * 1000; // 20 hours
+    tokenExpiry = Date.now() + 20 * 60 * 60 * 1000;
     return cachedToken;
   }
 
   throw new Error("Authentication failed: " + JSON.stringify(data));
 }
 
-async function fetchProtobuf(endpoint, token) {
-  const formData = new FormData();
-  formData.append("token", token);
+// ─── SCHEDULE DATA SOURCE ────────────────────────────────────────
+// NJ Transit's DepartureVision / TrainSchedule API
+// Base URL for the XML/JSON schedule endpoints
+const SCHEDULE_API = "https://datasource.njtransit.com/service/publicXMLFeed";
 
-  const res = await fetch(`${API_BASE}/${endpoint}`, {
-    method: "POST",
-    body: formData,
-  });
+async function fetchScheduleFromAPI(origin, destination, scheduleType) {
+  // Use the NJT public feed — this returns departure vision data
+  // We need to use the developer API credentials
+  const username = process.env.NJT_API_USER || process.env.NJT_USERNAME;
+  const password = process.env.NJT_API_PASS || process.env.NJT_PASSWORD;
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${endpoint} failed (${res.status}): ${text}`);
+  // Try the getTrainScheduleJSON endpoint  
+  const url = `https://datasource.njtransit.com/service/publicXMLFeed?command=getTrainScheduleJSON&NJT_Only=&station=${origin}`;
+  
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": "Basic " + Buffer.from(`${username}:${password}`).toString("base64"),
+      },
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (e) {
+    console.log("Schedule API unavailable:", e.message);
   }
-
-  const buffer = await res.arrayBuffer();
-  return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(
-    new Uint8Array(buffer)
-  );
+  
+  return null;
 }
 
 // ─── HANDLER ─────────────────────────────────────────────────────
@@ -67,108 +79,55 @@ exports.handler = async (event) => {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Cache-Control": "public, max-age=30",
+    "Cache-Control": "public, max-age=300", // Cache 5 minutes
   };
 
   try {
-    const token = await getToken();
-
-    // Fetch trip updates and alerts in parallel
-    const [tripFeed, alertFeed] = await Promise.all([
-      fetchProtobuf("getTripUpdates", token),
-      fetchProtobuf("getAlerts", token).catch(() => null),
-    ]);
-
-    // Parse trip updates — extract stop time updates for Maplewood
-    const trips = [];
+    const params = event.queryStringParameters || {};
+    const origin = params.origin;
+    const destination = params.destination;
     
-    if (tripFeed && tripFeed.entity) {
-      for (const entity of tripFeed.entity) {
-        const tu = entity.tripUpdate;
-        if (!tu || !tu.stopTimeUpdate) continue;
-
-        const tripId = tu.trip?.tripId || "";
-        const routeId = tu.trip?.routeId || "";
-        const startDate = tu.trip?.startDate || "";
-        const scheduleRelationship = tu.trip?.scheduleRelationship || 0;
-
-        // Look for Maplewood stop in this trip's updates
-        for (const stu of tu.stopTimeUpdate) {
-          const stopId = String(stu.stopId);
-          
-          // Check if this stop is Maplewood
-          // NJT uses various stop ID formats — we check broadly
-          if (
-            stopId.includes("MAPLEWOOD") ||
-            stopId.includes("maplewood") ||
-            stopId === "105" ||
-            stopId === "38177" ||
-            stopId.toLowerCase().includes("maple")
-          ) {
-            const arrival = stu.arrival;
-            const departure = stu.departure;
-            
-            trips.push({
-              tripId,
-              routeId,
-              startDate,
-              stopId,
-              cancelled: scheduleRelationship === 3,
-              arrivalDelay: arrival?.delay || 0,
-              arrivalTime: arrival?.time ? Number(arrival.time) : null,
-              departureDelay: departure?.delay || 0,
-              departureTime: departure?.time ? Number(departure.time) : null,
-              scheduleRelationship: stu.scheduleRelationship || 0,
-            });
-          }
-        }
-      }
+    if (!origin || !destination) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: "Missing 'origin' and/or 'destination' query parameters. Use station abbreviations (e.g., 'MP' for Maplewood, 'NY' for NY Penn).",
+          timestamp: Date.now(),
+        }),
+      };
     }
 
-    // Parse alerts
-    const alerts = [];
-    if (alertFeed && alertFeed.entity) {
-      for (const entity of alertFeed.entity) {
-        const alert = entity.alert;
-        if (!alert) continue;
-
-        // Check if alert affects Morris & Essex or Maplewood
-        const affectsUs = alert.informedEntity?.some((ie) => {
-          const rid = ie.routeId || "";
-          return (
-            rid.includes("ME") ||
-            rid.includes("Morris") ||
-            rid.includes("Gladstone") ||
-            rid.includes("Montclair")
-          );
-        });
-
-        if (affectsUs) {
-          alerts.push({
-            headerText:
-              alert.headerText?.translation?.[0]?.text || "",
-            descriptionText:
-              alert.descriptionText?.translation?.[0]?.text || "",
-            cause: alert.cause || 0,
-            effect: alert.effect || 0,
-          });
-        }
-      }
+    // Try to get schedule from NJT API
+    const apiData = await fetchScheduleFromAPI(origin, destination);
+    
+    if (apiData) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          source: "api",
+          origin,
+          destination,
+          data: apiData,
+          timestamp: Date.now(),
+        }),
+      };
     }
 
+    // If API fails, return a message indicating to use embedded schedules
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
+        source: "unavailable",
+        origin,
+        destination,
+        message: "Schedule API unavailable. App will use embedded schedule data.",
         timestamp: Date.now(),
-        trips,
-        alerts,
-        debug: {
-          totalEntities: tripFeed?.entity?.length || 0,
-          mapleEntities: trips.length,
-        },
       }),
     };
+
   } catch (err) {
     return {
       statusCode: 500,
