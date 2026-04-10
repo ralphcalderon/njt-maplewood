@@ -1,6 +1,8 @@
-	
-name	"ok-commuter"
-version	"4.0.0"
-description	"OK Commuter — NJ Transit commute companion"
-dependencies	
-gtfs-realtime-bindings	"^1.1.1"
+{
+  "name": "ok-commuter",
+  "version": "4.0.0",
+  "description": "OK Commuter — NJ Transit commute companion",
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.1.1"
+  }
+}
