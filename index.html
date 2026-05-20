@@ -117,6 +117,24 @@
   .footer-note{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:4px}
   .footer-sub{font-family:var(--mono);font-size:10px;color:var(--text-muted)}
   .footer-version{font-family:var(--mono);font-size:9px;color:var(--text-muted);margin-top:10px;opacity:.5}
+  
+  .train-card{cursor:pointer;user-select:none}
+  .train-card:active{opacity:.9}
+  .card-expanded{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+  .train-card.open .card-expanded{display:block}
+  .expanded-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .expanded-label{font-family:var(--mono);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px}
+  .expanded-value{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)}
+  .train-id-big{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent-bright);letter-spacing:1px}
+  .track-number{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green)}
+  .dv-status{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;display:inline-block}
+  .dv-status.on-time{background:var(--green-dim);color:var(--green)}
+  .dv-status.delayed{background:var(--red-dim);color:var(--red)}
+  .dv-status.approaching{background:var(--accent-dim);color:var(--accent-bright);animation:pulse 1.5s ease-in-out infinite}
+  .dv-status.cancelled{background:var(--red-dim);color:var(--red);text-decoration:line-through}
+  .expand-hint{font-family:var(--mono);font-size:8px;color:var(--text-muted);text-align:center;margin-top:2px;opacity:.6}
+  .card-chevron{color:var(--text-muted);transition:transform .15s;font-size:10px}
+  .train-card.open .card-chevron{transform:rotate(180deg)}
   ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
@@ -159,10 +177,62 @@ function swapStations(){const t=homeStation;homeStation=workStation;workStation=
 function checkReady(){const b=document.getElementById("goBtn");if(b){if(homeStation&&workStation&&homeStation.id!==workStation.id)b.classList.add("ready");else b.classList.remove("ready");}}
 function confirmSetup(){if(!homeStation||!workStation)return;const st=document.getElementById("switchTime");if(st&&st.value){const[sh,sm]=st.value.split(":").map(Number);localStorage.setItem("okc_switch",sh.toString());localStorage.setItem("okc_switch_min",sm.toString());}saveConfig();showLoading(async()=>{await loadSchedule();initApp();});}
 function showLoading(cb){currentScreen="loading";document.body.className="mood-outbound";const q=getRandomQuote(direction);document.getElementById("app").innerHTML=`<div class="loading-screen"><div class="loading-logo"><img src="${LOGO_FULL}" alt="OK Commuter"></div><div class="loading-quote">${q}<span class="loading-dots"></span></div></div>`;setTimeout(cb,3000);}
-function initApp(){currentScreen="app";scheduleType=getDayType();const switchHour=parseInt(localStorage.getItem("okc_switch")||"12",10);const switchMin=parseInt(localStorage.getItem("okc_switch_min")||"0",10);const nowTotal=new Date().getHours()*60+new Date().getMinutes();direction=nowTotal<(switchHour*60+switchMin)?"outbound":"inbound";applyMood();renderApp();fetchRealtime();setInterval(fetchRealtime,30000);setInterval(render,15000);}
+function initApp(){currentScreen="app";scheduleType=getDayType();const switchHour=parseInt(localStorage.getItem("okc_switch")||"12",10);const switchMin=parseInt(localStorage.getItem("okc_switch_min")||"0",10);const nowTotal=new Date().getHours()*60+new Date().getMinutes();direction=nowTotal<(switchHour*60+switchMin)?"outbound":"inbound";applyMood();renderApp();fetchRealtime();fetchDepartures();setInterval(fetchRealtime,30000);setInterval(fetchDepartures,25000);setInterval(render,15000);}
 function renderApp(){applyMood();const from=direction==="outbound"?homeStation:workStation,to=direction==="outbound"?workStation:homeStation;const moodLabel=direction==="outbound"?"into the machine":"homeward bound";document.getElementById("app").innerHTML=`<div class="app-screen"><div class="header"><div class="header-logo"><img src="${LOGO_ICON}" alt="OK Commuter"></div><div class="header-text"><div class="header-title">OK Commuter</div><div class="header-mood">${moodLabel}</div></div><div class="header-right"><div class="clock" id="clock"></div><button class="settings-btn" onclick="resetConfig()" title="Change stations"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m8.66-17.66l-1.42 1.42M4.76 19.24l-1.42 1.42M23 12h-2M3 12H1m17.66 8.66l-1.42-1.42M4.76 4.76L3.34 3.34"/></svg></button></div></div><button class="direction-toggle" onclick="toggleDirection()"><div class="dir-to-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>TO</div><div class="dir-to-name" id="toStation">${to.name}</div><div class="dir-from-line"><div class="dir-from-text">from <span id="fromStation">${from.name}</span></div><div class="tap-hint">tap to flip</div></div></button><div class="filter-row"><button class="filter-btn${!directOnly?' active':''}" id="filterAll" onclick="setFilter(false)">All</button><button class="filter-btn${directOnly?' active':''}" id="filterDirect" onclick="setFilter(true)">Direct</button></div><div class="filter-row" style="padding-top:4px"><button class="filter-btn${scheduleType==='weekday'?' active':''}" onclick="setScheduleType('weekday')">Wkdy</button><button class="filter-btn${scheduleType==='weekend'?' active':''}" onclick="setScheduleType('weekend')">Wknd</button><button class="filter-btn${scheduleType==='holiday'?' active':''}" onclick="setScheduleType('holiday')">Hol</button></div><div class="rt-status"><span class="rt-dot offline" id="rtDot"></span><span class="rt-label" id="rtLabel">Static schedule</span></div><div class="train-list" id="trainList"></div><div class="footer"><div class="footer-note" id="footerNote">Static schedule — check NJT app for real-time</div><div class="footer-sub" id="footerSub">njtransit.com for official status</div><div class="footer-version">OK Commuter v4.0 · no alarms and no surprises</div></div></div>`;render();}
-function render(){if(currentScreen!=="app")return;const now=new Date(),nowMins=now.getHours()*60+now.getMinutes();const c=document.getElementById("clock");if(c)c.textContent=now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});const from=direction==="outbound"?homeStation:workStation,to=direction==="outbound"?workStation:homeStation;const fe=document.getElementById("fromStation"),te=document.getElementById("toStation");if(fe)fe.textContent=from.name;if(te)te.textContent=to.name;let trains=SCHEDULE[direction]||[];if(directOnly)trains=trains.filter(t=>!t.transfer);const upcoming=trains.map(t=>({...t,minsAway:minutesUntil(t.depart,nowMins)})).filter(t=>t.minsAway>=-1&&t.minsAway<1440).sort((a,b)=>a.minsAway-b.minsAway);const display=showAll?upcoming:upcoming.slice(0,3);const list=document.getElementById("trainList");if(!list)return;if(!scheduleLoaded){list.innerHTML=`<div class="no-trains"><div class="no-trains-icon">📡</div><div class="no-trains-text">Schedule not yet available for this route</div><div class="no-trains-sub">More stations coming soon. Schedules currently available for Maplewood ↔ NY Penn.</div></div>`;return;}if(display.length===0){const ft=(SCHEDULE[direction]||[])[0];list.innerHTML=`<div class="no-trains"><div class="no-trains-icon">🌙</div><div class="no-trains-text">${directOnly?"No direct trains remaining":"No more trains today"}</div><div class="no-trains-sub">${ft?"First train: "+formatTime12(ft.depart):"Check back tomorrow"}</div></div>`;return;}let html="";display.forEach((train,i)=>{const isNext=i===0&&!showAll,isDirect=!train.transfer,rt=getDelayForTrain(train);let dh="";if(rt){if(rt.cancelled)dh='<div class="delay-badge cancelled">Cancelled</div>';else if(rt.delayMinutes>2)dh=`<div class="delay-badge late">${rt.delayMinutes}m late</div>`;else if(rt.delayMinutes>=0)dh='<div class="delay-badge on-time">On time</div>';}html+=`<div class="train-card${isNext?' next':''}" style="animation-delay:${i*.06}s"><div class="card-left"><div class="countdown${isNext?' next':''}">${formatCountdown(train.minsAway)}</div><div class="badge ${isDirect?'direct':'transfer'}">${isDirect?'Direct':'Xfer'}</div></div><div class="card-middle"><div class="time-row"><span class="depart-time">${formatTime12(train.depart)}</span><span class="time-dash">→</span><span class="arrive-time">${formatTime12(train.arrive)}</span></div><div class="train-meta"><span class="train-number">#${train.train}</span><span class="line-badge">${train.line}</span></div>${train.transfer?`<div class="transfer-note">${train.transfer}</div>`:''}${dh}</div><div class="card-right"><div class="duration">${train.duration}m</div></div></div>`;});if(upcoming.length>3)html+=`<button class="show-more-btn" onclick="toggleShowAll()">${showAll?'Show next 3':'Show all '+upcoming.length+' remaining'}</button>`;list.innerHTML=html;}
-function toggleDirection(){direction=direction==="outbound"?"inbound":"outbound";showAll=false;realtimeData=null;applyMood();renderApp();fetchRealtime();}
+
+let dvData=null;let dvTimestamp=0;
+async function fetchDepartures(){
+if(!homeStation)return;
+try{
+const station=direction==="outbound"?homeStation.id:workStation.id;
+const res=await fetch(`/.netlify/functions/njt-departures?station=\${station}`);
+if(!res.ok)throw new Error("HTTP "+res.status);
+const data=await res.json();
+if(data.error)throw new Error(data.error);
+dvData=data;dvTimestamp=Date.now();
+render();
+}catch(e){console.log("DV fail:",e.message);dvData=null;}
+}
+function getDvForTrain(train){
+if(!dvData||!dvData.departures)return null;
+if(Date.now()-dvTimestamp>90000)return null;
+const trainNum=train.train.replace(/^0+/,'');
+for(const d of dvData.departures){
+const dvNum=(d.trainId||'').replace(/^0+/,'');
+if(dvNum===trainNum||d.trainId===train.train)return d;
+}
+return null;
+}
+
+function render(){if(currentScreen!=="app")return;const now=new Date(),nowMins=now.getHours()*60+now.getMinutes();const c=document.getElementById("clock");if(c)c.textContent=now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});const from=direction==="outbound"?homeStation:workStation,to=direction==="outbound"?workStation:homeStation;const fe=document.getElementById("fromStation"),te=document.getElementById("toStation");if(fe)fe.textContent=from.name;if(te)te.textContent=to.name;let trains=SCHEDULE[direction]||[];if(directOnly)trains=trains.filter(t=>!t.transfer);const upcoming=trains.map(t=>({...t,minsAway:minutesUntil(t.depart,nowMins)})).filter(t=>t.minsAway>=-1&&t.minsAway<1440).sort((a,b)=>a.minsAway-b.minsAway);const display=showAll?upcoming:upcoming.slice(0,3);const list=document.getElementById("trainList");if(!list)return;if(!scheduleLoaded){list.innerHTML=`<div class="no-trains"><div class="no-trains-icon">📡</div><div class="no-trains-text">Schedule not yet available for this route</div><div class="no-trains-sub">More stations coming soon. Schedules currently available for Maplewood ↔ NY Penn.</div></div>`;return;}if(display.length===0){const ft=(SCHEDULE[direction]||[])[0];list.innerHTML=`<div class="no-trains"><div class="no-trains-icon">🌙</div><div class="no-trains-text">${directOnly?"No direct trains remaining":"No more trains today"}</div><div class="no-trains-sub">${ft?"First train: "+formatTime12(ft.depart):"Check back tomorrow"}</div></div>`;return;}let html="";display.forEach((train,i)=>{const isNext=i===0&&!showAll,isDirect=!train.transfer,rt=getDelayForTrain(train),dv=getDvForTrain(train);
+let statusHtml="";
+if(dv){
+if(dv.isCancelled)statusHtml='<span class="dv-status cancelled">Cancelled</span>';
+else if(dv.isApproaching)statusHtml='<span class="dv-status approaching">Approaching</span>';
+else if(dv.delayMinutes>2)statusHtml=`<span class="dv-status delayed">${dv.delayMinutes}m late</span>`;
+else statusHtml='<span class="dv-status on-time">On time</span>';
+}else if(rt){
+if(rt.cancelled)statusHtml='<div class="delay-badge cancelled">Cancelled</div>';
+else if(rt.delayMinutes>2)statusHtml=`<div class="delay-badge late">${rt.delayMinutes}m late</div>`;
+else if(rt.delayMinutes>=0)statusHtml='<div class="delay-badge on-time">On time</div>';
+}
+const trackHtml=dv&&dv.track?`<div class="expanded-row"><span class="expanded-label">Track</span><span class="track-number">${dv.track}</span></div>`:'';
+const dvStatusHtml=dv&&dv.status?`<div class="expanded-row"><span class="expanded-label">Status</span><span class="expanded-value">${dv.status}</span></div>`:'';
+html+=`<div class="train-card${isNext?' next':''}" style="animation-delay:${i*.06}s" onclick="this.classList.toggle('open')">
+<div class="card-left"><div class="countdown${isNext?' next':''}">${formatCountdown(train.minsAway)}</div><div class="badge ${isDirect?'direct':'transfer'}">${isDirect?'Direct':'Xfer'}</div></div>
+<div class="card-middle"><div class="time-row"><span class="depart-time">${formatTime12(train.depart)}</span><span class="time-dash">→</span><span class="arrive-time">${formatTime12(train.arrive)}</span></div>
+<div class="train-meta"><span class="train-number">#${train.train}</span><span class="line-badge">${train.line}</span>${statusHtml}</div>
+${train.transfer?`<div class="transfer-note">${train.transfer}</div>`:''}
+<div class="card-expanded">
+<div class="expanded-row"><span class="expanded-label">Train</span><span class="train-id-big">#${train.train}</span></div>
+${trackHtml}
+<div class="expanded-row"><span class="expanded-label">Line</span><span class="expanded-value">${train.line}</span></div>
+<div class="expanded-row"><span class="expanded-label">Duration</span><span class="expanded-value">${train.duration} min</span></div>
+${dvStatusHtml}
+${train.transfer?`<div class="expanded-row"><span class="expanded-label">Connection</span><span class="expanded-value" style="font-size:11px">${train.transfer}</span></div>`:''}
+</div></div>
+<div class="card-right"><div class="duration">${train.duration}m</div><div class="card-chevron">▼</div></div></div>`;});if(upcoming.length>3)html+=`<button class="show-more-btn" onclick="toggleShowAll()">${showAll?'Show next 3':'Show all '+upcoming.length+' remaining'}</button>`;list.innerHTML=html;}
+function toggleDirection(){direction=direction==="outbound"?"inbound":"outbound";showAll=false;realtimeData=null;dvData=null;applyMood();renderApp();fetchRealtime();fetchDepartures();}
 function setFilter(d){directOnly=d;showAll=false;document.getElementById("filterAll").className="filter-btn"+(d?"":" active");document.getElementById("filterDirect").className="filter-btn"+(d?" active":"");render();}
 async function setScheduleType(t){scheduleType=t;showAll=false;await loadSchedule();renderApp();}
 function toggleShowAll(){showAll=!showAll;render();}
