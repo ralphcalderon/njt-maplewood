@@ -185,7 +185,7 @@ async function fetchDepartures(){
 if(!homeStation)return;
 try{
 const station=direction==="outbound"?homeStation.id:workStation.id;
-const res=await fetch(`/.netlify/functions/njt-departures?station=\${station}`);
+const res=await fetch(`/.netlify/functions/njt-departures?station=${station}`);
 if(!res.ok)throw new Error("HTTP "+res.status);
 const data=await res.json();
 if(data.error)throw new Error(data.error);
@@ -200,6 +200,19 @@ const trainNum=train.train.replace(/^0+/,'');
 for(const d of dvData.departures){
 const dvNum=(d.trainId||'').replace(/^0+/,'');
 if(dvNum===trainNum||d.trainId===train.train)return d;
+}
+// Fallback: match by scheduled departure time
+const[th,tm]=train.depart.split(':').map(Number);
+for(const d of dvData.departures){
+if(!d.scheduledTime)continue;
+const timeMatch=d.scheduledTime.match(/(\d+):(\d+):(\d+)\s*(AM|PM)/i);
+if(!timeMatch)continue;
+let dh=parseInt(timeMatch[1]),dm=parseInt(timeMatch[2]);
+const ampm=timeMatch[4].toUpperCase();
+if(ampm==='PM'&&dh!==12)dh+=12;
+if(ampm==='AM'&&dh===12)dh=0;
+let sh=th;if(sh>=24)sh-=24;
+if(dh===sh&&dm===tm)return d;
 }
 return null;
 }
